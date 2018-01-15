@@ -35,8 +35,6 @@ void RayTrace(int, int, int);
 int ClosestObjectIndex(vector<double> intersections);
 Color GetColor(Vec3, Vec3, vector<Object*>, int, double, double, vector<LightSource*>);
 
-int  xAndY; //used to determine the x and y coordinates of an individual pixel
-
 int main() {
 	int height;
 	int width;
@@ -96,10 +94,11 @@ void RayTrace(int width, int height, int dpi) {
 	Camera sceneCam(camPos, origin);
 
 	//Object colors
-	Color lightGreen(0.5, 1, 0.5, 1, 0.3);
+	Color lightGreen(0.5, 1, 0.5, 1, 0.6);
 	Color gray();
 	Color black(0, 0, 0, 1, 0);
 	Color maroon(0.5, 0.25, 0.25, 1, 0);
+	Color checker(0, 0, 0, 0, 2);
 
 	//Defines a light
 	Color whiteLight(1, 1, 1, 0, 0);
@@ -110,7 +109,7 @@ void RayTrace(int width, int height, int dpi) {
 	Sphere sphere1(origin, 1, lightGreen);
 
 	//Defines a plane
-	Plane plane(y, -1, maroon);
+	Plane plane(y, -1, checker);
 
 	//Add objects to list of objects in the scene (list will become a propery of scene)
 	vector<Object*> sceneObjects;
@@ -135,12 +134,11 @@ void RayTrace(int width, int height, int dpi) {
 	cout << "Rendering...0%";
 	//Nested for loops hit each pixel of an image
 	for (int x = 0; x < width; x++) { //loop left to right across the image
-		for (int y = 0; y < height; y++) { //loop to to bottom of the image
+		for (int y = 0; y < height; y++) { //loop top to bottom of the image
 			//rendering calculations
+			int  xAndY; //used to determine the x and y coordinates of an individual pixel
 			xAndY = y * width + x;
 
-
-			//start with no anti-aliasing
 			//Amount of variation from the direction the camera is pointing for a ray to be sent through each pixel in the image plane
 			//find this equation
 			if (width > height) {
@@ -195,10 +193,8 @@ void RayTrace(int width, int height, int dpi) {
 					pixels[xAndY].b = intersectionColor.GetBlue();
 					//until transparency is implemented alpha can be 0 or 1
 					pixels[xAndY].a = intersectionColor.GetAlpha();
-				}
-				
+				}				
 			}
-			
 
 
 
@@ -212,6 +208,8 @@ void RayTrace(int width, int height, int dpi) {
 	
 	//save the image
 	SaveBMP("C:/Users/Kalen/Desktop/scene.bmp", width, height, dpi, pixels);
+
+	delete pixels;
 
 	cout << "...100%" << endl;
 }
@@ -260,7 +258,53 @@ Color GetColor(Vec3 intersectionPosition, Vec3 intersectionDirection, vector<Obj
 	Color objectColor = sceneObjects.at(index)->GetColor();
 	Vec3 objectNormal = sceneObjects.at(index)->GetNormalAt(intersectionPosition);
 
+
+	//chekered floor remove this later
+	if (objectColor.GetSpecial() == 2) {
+		int square = (int)floor(intersectionPosition.GetX()) + (int)floor(intersectionPosition.GetZ());
+		if ((square % 2) == 0) {
+			objectColor.SetRed(0);
+			objectColor.SetGreen(0);
+			objectColor.SetBlue(0);
+		}
+		else {
+			objectColor.SetRed(1);
+			objectColor.SetGreen(1);
+			objectColor.SetBlue(1);
+		}
+	}
+
 	Color finalColor = objectColor.ColorScalar(ambientLight);
+
+	//add reflections from objects with specular intensity
+	if (objectColor.GetSpecial() > 0 && objectColor.GetSpecial() <= 1) {
+		//Calculate a new reflected ray from the point of intersection
+		double dot1 = objectNormal.DotProduct(intersectionDirection.Invert());
+		Vec3 scaled1 = objectNormal.ScalarMult(dot1);
+		Vec3 add1 = scaled1.AddVector(intersectionDirection);
+		Vec3 scaled2 = add1.ScalarMult(2);
+		Vec3 add2 = intersectionDirection.Invert().AddVector(scaled2);
+		Vec3 reflectionDirection = add2.Norm();
+
+		Ray reflectionRay(intersectionPosition, reflectionDirection);
+
+		vector<double> reflectionIntersections;
+
+		for each(Object* o in sceneObjects) {
+			reflectionIntersections.push_back(o->FindIntersection(reflectionRay));
+		}
+
+		int objectWithReflectionIndex = ClosestObjectIndex(reflectionIntersections);
+
+		if (objectWithReflectionIndex != -1) {
+			if (reflectionIntersections.at(objectWithReflectionIndex) > accuracy) {
+				Vec3 reflectionIntersectionPosition = intersectionPosition.AddVector(reflectionDirection.ScalarMult(reflectionIntersections.at(objectWithReflectionIndex)));
+				//recursively call for each reflected ray until ray no longer hits another object
+				Color reflectionIntersectionColor = GetColor(reflectionIntersectionPosition, reflectionDirection, sceneObjects, objectWithReflectionIndex, accuracy, ambientLight, sceneLights);
+				finalColor = finalColor.ColorAdd(reflectionIntersectionColor.ColorScalar(objectColor.GetSpecial()));
+			}
+		}
+	}
 
 	for each (LightSource* light in sceneLights){
 		//find this equation

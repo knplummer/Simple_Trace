@@ -68,7 +68,7 @@ double Sphere::FindIntersection(Ray r) {
 			return root1;
 		}
 		else {
-			//second root is smallest positve root
+			//second root is smallest positive root
 			return ((sqrt(discriminant) - b) / 2) - 0.000001; //root 2
 		}
 	}
